@@ -63,7 +63,7 @@ def verify_tally_signature(raw_body: bytes, signature_header: str) -> bool:
     try:
         mac = hmac.new(TALLY_SECRET.encode(), raw_body, hashlib.sha256).hexdigest()
         return hmac.compare_digest(mac, signature_header)
-    except Exception:  # L100: except Exception: (Garde large pour robustesse du wrapper)
+    except (UnicodeEncodeError, TypeError, ValueError):
         logger.exception("Signature verification error")
         return False
 
@@ -94,7 +94,7 @@ def images_from_pdf_bytes(file_bytes: bytes, poppler_path: Optional[str] = None)
     except UnidentifiedImageError:
         logger.exception("File is not a valid image")
         raise
-    except Exception:
+    except (UnidentifiedImageError, OSError, ValueError):
         # fallback: try to open as image
         try:
             img = Image.open(io.BytesIO(file_bytes)).convert("RGB")
@@ -109,7 +109,7 @@ def ocr_images_to_text(images: List[Image.Image]) -> str:
     pages: List[str] = []
     try:
         import pytesseract  # local import so we can reference Tesseract errors if needed
-    except Exception:
+    except ImportError:
         logger.exception("pytesseract is not installed or not available")
         # return empty text: calling code will still produce an Excel with empty fields
         return ""
