@@ -1,37 +1,35 @@
-# Dockerfile (SOLUTION MULTI-ÉTAPES DÉFINITIVE)
+# Dockerfile (SOLUTION MINICONDA ULTIME)
 
-# ÉTAPE 1: L'ÉTAPE DE CONSTRUCTION (BUILDER)
-# Utiliser une image complète (buster) pour garantir que tous les outils de compilation sont présents.
-FROM python:3.11-bullseye AS builder
+# Utiliser l'image Miniconda (base pour la science des données)
+FROM continuumio/miniconda3 AS builder
 
-# Installer les dépendances système nécessaires pour la compilation et l'exécution
+# Installer les dépendances système Tesseract et Poppler
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-fra \
     poppler-utils \
     libgl1 \
     libglib2.0-0 \
-    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# Créer un environnement Conda stable avec Python 3.11
+RUN conda create --name app_env python=3.11 -y
+ENV PATH /opt/conda/envs/app_env/bin:$PATH
 
 # Définir le répertoire de travail
 WORKDIR /app
-# Copier uniquement le fichier de dépendances
 COPY requirements.txt .
 
-# Installer les dépendances Python dans un dossier temporaire
-# Nous utilisons --only-binary :all: pour forcer l'utilisation des roues quand c'est possible
-RUN pip install --no-cache-dir --only-binary :all: -r requirements.txt
+# Installer les dépendances Python DANS l'environnement Conda
+# Conda gère les dépendances complexes (pandas) en binaires stables
+RUN pip install --no-cache-dir -r requirements.txt
 
-
-# ----------------------------------------------------------------------
-
-# ÉTAPE 2: L'ÉTAPE D'EXÉCUTION FINALE (RUNTIME)
-# Utiliser l'image slim (plus petite) pour le déploiement final.
+# --- Optimisation de l'image (Éliminer les fichiers de construction) ---
+# Utiliser une image Python minimaliste pour l'exécution finale
 FROM python:3.11-slim
 
-# Installer uniquement les dépendances système nécessaires pour l'exécution
+# Installer les dépendances système d'exécution (Tesseract, etc.)
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-fra \
@@ -41,19 +39,20 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Créer un utilisateur non-root
+# Créer l'utilisateur non-root (pour les erreurs de permission)
 RUN useradd -m appuser
 WORKDIR /home/appuser/app
 
-# Copier les dépendances Python compilées de l'étape 'builder'
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+# Copier l'environnement Conda complet (y compris pandas pré-compilé) de l'étape builder
+COPY --from=builder /opt/conda/envs/app_env /usr/local/lib/app_env
+ENV PATH /usr/local/lib/app_env/bin:$PATH
+
 # Copier le reste du code
 COPY --chown=appuser:appuser . .
 
 # Exposer le port
 ENV PORT=8000
-
 USER appuser
 
-# Commande de démarrage
+# Commande de démarrage (uvicorn est maintenant dans le PATH de l'environnement copié)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
