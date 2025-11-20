@@ -1,9 +1,37 @@
-# Dockerfile (VERSION FINALE ET DÉFINITIVE)
+# Dockerfile (SOLUTION MULTI-ÉTAPES DÉFINITIVE)
 
-# Utiliser une image de base plus complète pour assurer la compilation stable
-FROM python:3.11-buster
+# ÉTAPE 1: L'ÉTAPE DE CONSTRUCTION (BUILDER)
+# Utiliser une image complète (buster) pour garantir que tous les outils de compilation sont présents.
+FROM python:3.11-bullseye AS builder
 
-# Installer dépendances systèmes pour Tesseract et Poppler
+# Installer les dépendances système nécessaires pour la compilation et l'exécution
+RUN apt-get update && apt-get install -y \
+    tesseract-ocr \
+    tesseract-ocr-fra \
+    poppler-utils \
+    libgl1 \
+    libglib2.0-0 \
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Définir le répertoire de travail
+WORKDIR /app
+# Copier uniquement le fichier de dépendances
+COPY requirements.txt .
+
+# Installer les dépendances Python dans un dossier temporaire
+# Nous utilisons --only-binary :all: pour forcer l'utilisation des roues quand c'est possible
+RUN pip install --no-cache-dir --only-binary :all: -r requirements.txt
+
+
+# ----------------------------------------------------------------------
+
+# ÉTAPE 2: L'ÉTAPE D'EXÉCUTION FINALE (RUNTIME)
+# Utiliser l'image slim (plus petite) pour le déploiement final.
+FROM python:3.11-slim
+
+# Installer uniquement les dépendances système nécessaires pour l'exécution
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-fra \
@@ -17,15 +45,8 @@ RUN apt-get update && apt-get install -y \
 RUN useradd -m appuser
 WORKDIR /home/appuser/app
 
-# Copier seulement le fichier de dépendances en premier pour profiter du cache Docker
-COPY --chown=appuser:appuser requirements.txt .
-
-# Installer les dépendances Python
-RUN python -m pip install --upgrade pip
-# COMMANDE CLÉ : --only-binary :all: force l'utilisation de roues pré-compilées (wheels)
-# et empêche l'échec de compilation C++ avec pandas.
-RUN pip install --user --no-cache-dir --only-binary :all: -r requirements.txt
-
+# Copier les dépendances Python compilées de l'étape 'builder'
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 # Copier le reste du code
 COPY --chown=appuser:appuser . .
 
