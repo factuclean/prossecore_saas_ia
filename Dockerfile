@@ -1,58 +1,30 @@
-# Dockerfile (SOLUTION MINICONDA ULTIME)
+# Dockerfile (VERSION FINALE POUR RENDER)
 
-# Utiliser l'image Miniconda (base pour la science des données)
-FROM continuumio/miniconda3 AS builder
-
-# Installer les dépendances système Tesseract et Poppler
-RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-fra \
-    poppler-utils \
-    libgl1 \
-    libglib2.0-0 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Créer un environnement Conda stable avec Python 3.11
-RUN conda create --name app_env python=3.11 -y
-ENV PATH /opt/conda/envs/app_env/bin:$PATH
-
-# Définir le répertoire de travail
-WORKDIR /app
-COPY requirements.txt .
-
-# Installer les dépendances Python DANS l'environnement Conda
-# Conda gère les dépendances complexes (pandas) en binaires stables
-RUN pip install --no-cache-dir -r requirements.txt
-
-# --- Optimisation de l'image (Éliminer les fichiers de construction) ---
-# Utiliser une image Python minimaliste pour l'exécution finale
+# Utiliser une image Python 3.11 légère
 FROM python:3.11-slim
 
-# Installer les dépendances système d'exécution (Tesseract, etc.)
-RUN apt-get update && apt-get install -y \
-    tesseract-ocr \
-    tesseract-ocr-fra \
-    poppler-utils \
-    libgl1 \
-    libglib2.0-0 \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Créer l'utilisateur non-root (pour les erreurs de permission)
+# Créer un utilisateur non-root
 RUN useradd -m appuser
-WORKDIR /home/appuser/app
 
-# Copier l'environnement Conda complet (y compris pandas pré-compilé) de l'étape builder
-COPY --from=builder /opt/conda/envs/app_env /usr/local/lib/app_env
-ENV PATH /usr/local/lib/app_env/bin:$PATH
+# Installer dépendances systèmes et outils de compilation (build-essential)
+# Le tout est sur une seule ligne pour éviter les avertissements de syntaxe
+USER root
+RUN apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-fra poppler-utils libgl1 libglib2.0-0 build-essential && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Définir le répertoire de travail pour l'utilisateur non-root
+WORKDIR /home/appuser/app
+COPY --chown=appuser:appuser requirements.txt .
+
+# Installer les dépendances Python en tant qu'utilisateur non-root
+USER appuser
+RUN python -m pip install --upgrade pip
+RUN pip install --user --no-cache-dir -r requirements.txt
 
 # Copier le reste du code
 COPY --chown=appuser:appuser . .
 
 # Exposer le port
 ENV PORT=8000
-USER appuser
 
-# Commande de démarrage (uvicorn est maintenant dans le PATH de l'environnement copié)
+# Commande de démarrage (exécution en tant qu'utilisateur non-root)
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
