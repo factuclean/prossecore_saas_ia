@@ -1,37 +1,48 @@
-# Dockerfile (VERSION FINALE PRÊTE À DÉPLOYER)
-
-# 1. Image de base stable
+# Dockerfile (corrigé : installe tesseract, poppler, rust/cargo et crée un CARGO_HOME écrivable)
 FROM python:3.11-slim
 
-# 2. Installer les dépendances système et outils de compilation
+# 1) Installer dépendances système (root)
 USER root
-RUN apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-fra poppler-utils libgl1 libglib2.0-0 build-essential && apt-get clean && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    ca-certificates \
+    git \
+    tesseract-ocr \
+    tesseract-ocr-fra \
+    poppler-utils \
+    libgl1 \
+    libglib2.0-0 \
+    rustc \
+    cargo \
+    pkg-config \
+    libssl-dev \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 3. Préparation de l'utilisateur et du répertoire de travail
+# 2) Créer un utilisateur non-root
 RUN useradd -m appuser
 WORKDIR /home/appuser/app
 RUN chown -R appuser:appuser /home/appuser
 
-# 4. Redirection du cache Cargo/Rust (FIX pour l'erreur OS 30)
-ENV CARGO_HOME /home/appuser/.cargo
-ENV RUSTUP_HOME /home/appuser/.rustup
-RUN mkdir -p $CARGO_HOME $RUSTUP_HOME
+# 3) Définir dossiers Cargo/Rust écrivables dans /tmp (évite /usr/local en lecture seule)
+ENV CARGO_HOME=/tmp/cargo
+ENV RUSTUP_HOME=/tmp/rustup
+RUN mkdir -p $CARGO_HOME $RUSTUP_HOME && chown -R appuser:appuser $CARGO_HOME $RUSTUP_HOME
 
-# 5. Passer à l'utilisateur non-root pour TOUTES les installations
+# 4) Passer à l'utilisateur non-root
 USER appuser
 
-# 6. Copier les deux fichiers de dépendances
-COPY requirements.txt .
-COPY requirements_pandas.txt .
-
-# 7. Installer les dépendances (la première commande est pour la cohérence, la seconde est le point critique)
+# 5) Copier les fichiers requirements puis installer (et upgrade pip)
+COPY --chown=appuser:appuser requirements.txt requirements.txt
 RUN python -m pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir -r requirements_pandas.txt
+RUN pip install --user --no-warn-script-location -r requirements.txt
 
-# 8. Copier le reste du code
-COPY . .
+# 6) Copier le code source
+COPY --chown=appuser:appuser . .
 
-# 9. Configuration de l'exécution
+# 7) Exposer port et config
+ENV PATH=/home/appuser/.local/bin:$PATH
 ENV PORT=8000
+
+# 8) Lancer l'app
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
