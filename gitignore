@@ -1,6 +1,22 @@
-.env
-__pycache__/
+# Environment
+.venv/
+env/
+_pycache_/
 *.pyc
-venv/
-*.sqlite3
+
+# System
+.DS_Store
+
+# Secrets
+.env
+
+# VSCode, PyCharm
 .idea/
+.vscode/
+
+# Outputs
+*.xlsx
+*.pdf
+*.tmp
+*.log
+uploads
